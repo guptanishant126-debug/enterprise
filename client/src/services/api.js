@@ -1,7 +1,40 @@
 import axios from 'axios';
 
+// Smart Base URL resolution:
+// 1. If custom endpoint saved in browser localStorage (nexus_api_url)
+// 2. If explicitly configured in Vercel/Render env (VITE_API_BASE_URL)
+// 3. If running on a deployed domain (like *.vercel.app), default to relative '/api'
+// 4. If running locally, default to 'http://localhost:5000/api'
+export const getApiBaseUrl = () => {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('nexus_api_url');
+    if (saved && saved.trim()) return saved.trim();
+  }
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL.trim();
+  }
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return '/api';
+  }
+  return 'http://localhost:5000/api';
+};
+
+export const setApiBaseUrl = (url) => {
+  if (typeof window !== 'undefined') {
+    if (url && url.trim()) {
+      const normalized = url.trim().replace(/\/$/, '');
+      const finalUrl = normalized.endsWith('/api') ? normalized : `${normalized}/api`;
+      localStorage.setItem('nexus_api_url', finalUrl);
+      api.defaults.baseURL = finalUrl;
+    } else {
+      localStorage.removeItem('nexus_api_url');
+      api.defaults.baseURL = getApiBaseUrl();
+    }
+  }
+};
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api',
+  baseURL: getApiBaseUrl(),
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json'
@@ -73,4 +106,3 @@ export const auditApi = {
 };
 
 export default api;
-
