@@ -1,6 +1,8 @@
 import jwt from 'jsonwebtoken';
 import db from '../config/db.js';
 
+const JWT_SECRET = process.env.JWT_SECRET || 'nexusai-enterprise-jwt-super-secret-key-2026';
+
 export const authenticateJWT = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
@@ -14,7 +16,7 @@ export const authenticateJWT = async (req, res, next) => {
   const token = authHeader.split(' ')[1];
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
     const { rows } = await db.query(
       'SELECT id, email, full_name, department, role, created_at FROM users WHERE id = $1',
       [decoded.userId]
@@ -42,4 +44,3 @@ export const authenticateJWT = async (req, res, next) => {
     });
   }
 };
-

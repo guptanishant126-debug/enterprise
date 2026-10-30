@@ -1,14 +1,19 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import db from '../config/db.js';
+import { supabaseAdmin } from '../config/supabase.js';
 import { logAuditEvent } from '../services/auditService.js';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'nexusai-enterprise-jwt-super-secret-key-2026';
 
 export const register = async (req, res) => {
   try {
     const { email, password, full_name, department, role } = req.body;
 
-    // Check if email already registered
-    const existing = await db.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
+    const normalizedEmail = (email || '').trim().toLowerCase();
+
+    // Check if email already registered in database
+    const existing = await db.query('SELECT id FROM users WHERE email = $1', [normalizedEmail]);
     if (existing.rows.length > 0) {
       return res.status(409).json({
         success: false,
@@ -24,15 +29,34 @@ export const register = async (req, res) => {
       `INSERT INTO users (email, password_hash, full_name, department, role)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id, email, full_name, department, role, created_at`,
-      [email.toLowerCase(), password_hash, full_name, department, role]
+      [normalizedEmail, password_hash, full_name.trim(), department, role]
     );
 
     const newUser = rows[0];
 
+    // Synchronize to Supabase Auth Admin if active (non-blocking)
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin.auth.admin.createUser({
+          email: normalizedEmail,
+          password: password,
+          email_confirm: true,
+          user_metadata: {
+            full_name: newUser.full_name,
+            department: newUser.department,
+            role: newUser.role
+          }
+        });
+      } catch (sbErr) {
+        // Non-blocking notice (e.g. if already registered or network limit)
+        console.warn('[AuthController.register] Notice on Supabase Auth sync:', sbErr.message);
+      }
+    }
+
     // Generate JWT (8 hours expiration)
     const token = jwt.sign(
       { userId: newUser.id, role: newUser.role, department: newUser.department },
-      process.env.JWT_SECRET,
+      JWT_SECRET,
       { expiresIn: '8h' }
     );
 
@@ -56,7 +80,7 @@ export const register = async (req, res) => {
     console.error('[AuthController.register] Error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error during user registration',
+      message: error.message || 'Internal server error during user registration',
       error: error.message
     });
   }
@@ -65,10 +89,11 @@ export const register = async (req, res) => {
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    const normalizedEmail = (email || '').trim().toLowerCase();
 
     const { rows } = await db.query(
       'SELECT id, email, password_hash, full_name, department, role, created_at FROM users WHERE email = $1',
-      [email.toLowerCase()]
+      [normalizedEmail]
     );
 
     if (rows.length === 0) {
@@ -91,7 +116,7 @@ export const login = async (req, res) => {
     // Generate JWT (8 hours)
     const token = jwt.sign(
       { userId: user.id, role: user.role, department: user.department },
-      process.env.JWT_SECRET,
+      JWT_SECRET,
       { expiresIn: '8h' }
     );
 
@@ -124,7 +149,7 @@ export const login = async (req, res) => {
     console.error('[AuthController.login] Error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error during authentication',
+      message: error.message || 'Internal server error during authentication',
       error: error.message
     });
   }
@@ -136,4 +161,3 @@ export const getMe = async (req, res) => {
     user: req.user
   });
 };
-

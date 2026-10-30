@@ -27,7 +27,14 @@ export const LoginPage = () => {
       navigate('/dashboard');
     } catch (err) {
       console.error('[LoginPage] Login error:', err);
-      setError(err.response?.data?.message || 'Authentication failed. Please verify credentials.');
+      let errMsg = 'Authentication failed. Please verify credentials.';
+      if (err.response?.data?.message) {
+        errMsg = err.response.data.message;
+      } else if (err.message === 'Network Error' || !err.response) {
+        const targetUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+        errMsg = `Cannot connect to backend server (${targetUrl}). Please ensure the backend server is running and accessible.`;
+      }
+      setError(errMsg);
     } finally {
       setLoading(false);
     }
@@ -158,4 +165,3 @@ export const LoginPage = () => {
     </div>
   );
 };
-

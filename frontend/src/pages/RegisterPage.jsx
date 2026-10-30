@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Sparkles, Lock, Mail, User, Building2, Shield, ArrowRight } from 'lucide-react';
+import { Sparkles, Lock, Mail, User, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Input } from '../components/common/Input';
 import { Select } from '../components/common/Select';
@@ -52,9 +52,15 @@ export const RegisterPage = () => {
       navigate('/dashboard');
     } catch (err) {
       console.error('[RegisterPage] Error:', err);
-      const serverMsg = err.response?.data?.errors
-        ? err.response.data.errors.map(e => e.message).join(', ')
-        : (err.response?.data?.message || 'Registration failed.');
+      let serverMsg = 'Registration failed. Please check your credentials and try again.';
+      if (err.response?.data?.errors && Array.isArray(err.response.data.errors)) {
+        serverMsg = err.response.data.errors.map(e => e.message).join(', ');
+      } else if (err.response?.data?.message) {
+        serverMsg = err.response.data.message;
+      } else if (err.message === 'Network Error' || !err.response) {
+        const targetUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+        serverMsg = `Cannot connect to backend server (${targetUrl}). Please ensure the backend server is running and accessible.`;
+      }
       setError(serverMsg);
     } finally {
       setLoading(false);
@@ -155,4 +161,3 @@ export const RegisterPage = () => {
     </div>
   );
 };
-

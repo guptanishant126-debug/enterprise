@@ -5,10 +5,29 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 
-dotenv.config();
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Priority loading: .env.supabase, .env, or root .env
+const candidateEnvPaths = [
+  path.resolve(__dirname, '../../.env.supabase'),
+  path.resolve(__dirname, '../../.env'),
+  path.resolve(__dirname, '../../../.env.supabase'),
+  path.resolve(__dirname, '../../../.env'),
+  path.resolve(process.cwd(), '.env.supabase'),
+  path.resolve(process.cwd(), 'backend/.env.supabase'),
+  path.resolve(process.cwd(), 'backend/.env'),
+  path.resolve(process.cwd(), 'server/.env.supabase'),
+  path.resolve(process.cwd(), 'server/.env'),
+  path.resolve(process.cwd(), '.env')
+];
+
+for (const p of candidateEnvPaths) {
+  if (fs.existsSync(p)) {
+    dotenv.config({ path: p });
+  }
+}
+dotenv.config();
 
 const { Pool } = pg;
 
@@ -47,10 +66,15 @@ function persistFallback() {
   }
 }
 
-// Initialize PostgreSQL / Supabase Connection Pool
-const databaseUrl = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+/**
+ * Lazily creates or returns the PostgreSQL connection pool
+ */
+export function getOrCreatePool() {
+  if (pool) return pool;
 
-if (databaseUrl) {
+  const databaseUrl = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+  if (!databaseUrl) return null;
+
   try {
     const isSupabase = databaseUrl.includes('supabase.co') || databaseUrl.includes('supabase.com');
     pool = new Pool({
@@ -60,22 +84,30 @@ if (databaseUrl) {
         : (databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1')
           ? false
           : { rejectUnauthorized: false }),
-      connectionTimeoutMillis: 5000,
+      connectionTimeoutMillis: 10000,
       idleTimeoutMillis: 30000,
       max: 20
     });
+    return pool;
   } catch (e) {
     console.error('[DB] Failed to create pg.Pool:', e.message);
+    return null;
   }
 }
+
+// Initial pool creation attempt
+getOrCreatePool();
 
 /**
  * Initializes database schemas and verifies connectivity
  */
 export async function initializeDatabase() {
-  if (pool) {
+  const activePool = getOrCreatePool();
+  const databaseUrl = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+
+  if (activePool) {
     try {
-      const client = await pool.connect();
+      const client = await activePool.connect();
       console.log('✅ [DB] Connected successfully to PostgreSQL via pg.Pool.');
       isPostgresConnected = true;
 
@@ -89,12 +121,12 @@ export async function initializeDatabase() {
       client.release();
       return true;
     } catch (err) {
-      console.warn(`⚠️ [DB] PostgreSQL connection to ${databaseUrl} failed: ${err.message}`);
+      console.warn(`⚠️ [DB] PostgreSQL connection to database failed: ${err.message}`);
       console.log('⚡ [DB] Activating high-resilience embedded enterprise storage engine with full persistence.');
       isPostgresConnected = false;
     }
   } else {
-    console.log('⚡ [DB] No DATABASE_URL provided. Activating high-resilience embedded enterprise storage engine.');
+    console.log('⚡ [DB] No DATABASE_URL or SUPABASE_DB_URL provided. Activating high-resilience embedded enterprise storage engine.');
   }
   return false;
 }
@@ -104,9 +136,10 @@ export async function initializeDatabase() {
  * Seamlessly routes to PostgreSQL pool if active, or executes against enterprise fallback store
  */
 export async function query(text, params = []) {
-  if (isPostgresConnected && pool) {
+  const activePool = getOrCreatePool();
+  if (isPostgresConnected && activePool) {
     try {
-      return await pool.query(text, params);
+      return await activePool.query(text, params);
     } catch (error) {
       console.error('[DB] PostgreSQL query error:', error.message, 'Query:', text);
       throw error;
@@ -128,8 +161,11 @@ function executeFallbackQuery(text, params = []) {
   if (lower.startsWith('select')) {
     // A. Users table queries
     if (lower.includes('from users')) {
+      if (lower.includes('count(*)')) {
+        return { rows: [{ count: String(memoryStore.users.length) }], rowCount: 1 };
+      }
       if (lower.includes('where email = $1')) {
-        const user = memoryStore.users.find(u => u.email.toLowerCase() === params[0].toLowerCase());
+        const user = memoryStore.users.find(u => u.email.toLowerCase() === (params[0] || '').toLowerCase());
         return { rows: user ? [user] : [], rowCount: user ? 1 : 0 };
       }
       if (lower.includes('where id = $1')) {
@@ -141,6 +177,10 @@ function executeFallbackQuery(text, params = []) {
 
     // B. Initiatives queries
     if (lower.includes('from initiatives')) {
+      if (lower.includes('count(*)')) {
+        return { rows: [{ count: String(memoryStore.initiatives.length) }], rowCount: 1 };
+      }
+
       let rows = [...memoryStore.initiatives];
 
       // Single initiative by ID
@@ -215,6 +255,9 @@ function executeFallbackQuery(text, params = []) {
 
     // C. AI Evaluations queries
     if (lower.includes('from ai_evaluations')) {
+      if (lower.includes('count(*)')) {
+        return { rows: [{ count: String(memoryStore.ai_evaluations.length) }], rowCount: 1 };
+      }
       if (lower.includes('where initiative_id = $1')) {
         const evalItem = memoryStore.ai_evaluations.find(e => e.initiative_id === params[0]);
         return { rows: evalItem ? [evalItem] : [], rowCount: evalItem ? 1 : 0 };
@@ -224,6 +267,9 @@ function executeFallbackQuery(text, params = []) {
 
     // D. Workflow actions queries
     if (lower.includes('from workflow_actions')) {
+      if (lower.includes('count(*)')) {
+        return { rows: [{ count: String(memoryStore.workflow_actions.length) }], rowCount: 1 };
+      }
       if (lower.includes('where initiative_id = $1')) {
         const actions = memoryStore.workflow_actions
           .filter(a => a.initiative_id === params[0])
@@ -243,6 +289,9 @@ function executeFallbackQuery(text, params = []) {
 
     // E. Audit logs queries
     if (lower.includes('from audit_logs')) {
+      if (lower.includes('count(*)')) {
+        return { rows: [{ count: String(memoryStore.audit_logs.length) }], rowCount: 1 };
+      }
       const logs = memoryStore.audit_logs
         .map(l => {
           const actor = memoryStore.users.find(u => u.id === l.actor_id);
@@ -261,6 +310,10 @@ function executeFallbackQuery(text, params = []) {
   if (lower.startsWith('insert into')) {
     // Users
     if (lower.includes('insert into users')) {
+      const existing = memoryStore.users.find(u => u.email.toLowerCase() === (params[0] || '').toLowerCase());
+      if (existing) {
+        return { rows: [existing], rowCount: 1 };
+      }
       const newUser = {
         id: crypto.randomUUID(),
         email: params[0],
@@ -393,5 +446,6 @@ function executeFallbackQuery(text, params = []) {
 export default {
   query,
   initializeDatabase,
+  getOrCreatePool,
   pool
 };
