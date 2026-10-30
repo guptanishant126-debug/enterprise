@@ -1,9 +1,11 @@
 import axios from 'axios';
 
+const PRODUCTION_API_URL = 'https://enterprise-1l1e.onrender.com/api';
+
 // Smart Base URL resolution:
 // 1. If custom endpoint saved in browser localStorage (nexus_api_url)
 // 2. If explicitly configured in Vercel/Render env (VITE_API_BASE_URL)
-// 3. If running on a deployed domain (like *.vercel.app), default to relative '/api'
+// 3. If running on a deployed domain (like *.vercel.app), default to Render backend URL
 // 4. If running locally, default to 'http://localhost:5000/api'
 export const getApiBaseUrl = () => {
   if (typeof window !== 'undefined') {
@@ -14,7 +16,7 @@ export const getApiBaseUrl = () => {
     return import.meta.env.VITE_API_BASE_URL.trim();
   }
   if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    return '/api';
+    return PRODUCTION_API_URL;
   }
   return 'http://localhost:5000/api';
 };

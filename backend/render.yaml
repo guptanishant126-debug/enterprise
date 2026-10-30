@@ -5,7 +5,7 @@
 
 services:
   - type: web
-    name: nexus-enterprise-backend
+    name: enterprise-1l1e
     runtime: node
     region: oregon
     plan: free
@@ -19,7 +19,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: CLIENT_URL
-        value: https://nexus-enterprise.vercel.app
+        value: https://enterprise-lemon-three.vercel.app
       - key: JWT_SECRET
         generateValue: true
       - key: GEMINI_API_KEY
@@ -34,4 +34,3 @@ services:
         sync: false
       - key: SUPABASE_DB_URL
         sync: false
-
