@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+*/node_modules/
+.pnp
+.pnp.js
+
+# Build Outputs
+dist/
+*/dist/
+build/
+*/build/
+
+# Environment Variables & Secrets (Keep templates tracked, ignore live keys)
+.env
+.env.local
+.env.*.local
+*.env
+*.env.supabase
+!*.env.example
+!*.env.*.example
+!.env.client.example
+!.env.server.example
+!.env.supabase.example
+
+# Local storage & databases
+backend/db/nexus_storage.json
+server/db/nexus_storage.json
+*.sqlite
+*.sqlite3
+*.log
+
+# Editor & OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.vite-temp/
+*/.vite-temp/
+

@@ -1,0 +1,15 @@
+{
+  "name": "nexus-enterprise-ai",
+  "version": "1.0.0",
+  "description": "NexusAI Enterprise — Enterprise AI Orchestrator & Knowledge Intelligence Platform",
+  "private": true,
+  "scripts": {
+    "dev:client": "npm run dev --prefix client",
+    "build:client": "npm run build --prefix client",
+    "dev:server": "npm run dev --prefix server",
+    "start:server": "npm run start --prefix server",
+    "dev:backend": "npm run dev --prefix backend",
+    "seed:backend": "npm run seed --prefix backend",
+    "test:backend": "npm run test --prefix backend"
+  }
+}
